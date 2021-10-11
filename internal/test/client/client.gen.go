@@ -31,17 +31,29 @@ type SchemaObject struct {
 	Role      string `json:"role"`
 }
 
+// PatchBody defines model for PatchBody.
+type PatchBody interface{}
+
 // PostBothJSONBody defines parameters for PostBoth.
 type PostBothJSONBody = SchemaObject
 
 // PostJsonJSONBody defines parameters for PostJson.
 type PostJsonJSONBody = SchemaObject
 
+// PatchJsonInlineJSONBody defines parameters for PatchJsonInline.
+type PatchJsonInlineJSONBody = SchemaObject
+
 // PostBothJSONRequestBody defines body for PostBoth for application/json ContentType.
 type PostBothJSONRequestBody = PostBothJSONBody
 
 // PostJsonJSONRequestBody defines body for PostJson for application/json ContentType.
 type PostJsonJSONRequestBody = PostJsonJSONBody
+
+// PatchJsonJSONRequestBody defines body for PatchJson for application/json ContentType.
+type PatchJsonJSONRequestBody PatchBody
+
+// PatchJsonInlineJSONRequestBody defines body for PatchJsonInline for application/json ContentType.
+type PatchJsonInlineJSONRequestBody = PatchJsonInlineJSONBody
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -129,6 +141,16 @@ type ClientInterface interface {
 
 	PostJson(ctx context.Context, body PostJsonJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// PatchJson request with any body
+	PatchJsonWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PatchJson(ctx context.Context, body PatchJsonJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PatchJsonInline request with any body
+	PatchJsonInlineWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PatchJsonInline(ctx context.Context, body PatchJsonInlineJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetJson request
 	GetJson(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -192,6 +214,54 @@ func (c *Client) PostJsonWithBody(ctx context.Context, contentType string, body 
 
 func (c *Client) PostJson(ctx context.Context, body PostJsonJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostJsonRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PatchJsonWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchJsonRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PatchJson(ctx context.Context, body PatchJsonJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchJsonRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PatchJsonInlineWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchJsonInlineRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PatchJsonInline(ctx context.Context, body PatchJsonInlineJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchJsonInlineRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -348,6 +418,86 @@ func NewPostJsonRequestWithBody(server string, contentType string, body io.Reade
 	}
 
 	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPatchJsonRequest calls the generic PatchJson builder with application/json-patch+json body
+func NewPatchJsonRequest(server string, body PatchJsonJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPatchJsonRequestWithBody(server, "application/json-patch+json", bodyReader)
+}
+
+// NewPatchJsonRequestWithBody generates requests for PatchJson with any type of body
+func NewPatchJsonRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/with_json_patch_body")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPatchJsonInlineRequest calls the generic PatchJsonInline builder with application/json-patch+json body
+func NewPatchJsonInlineRequest(server string, body PatchJsonInlineJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPatchJsonInlineRequestWithBody(server, "application/json-patch+json", bodyReader)
+}
+
+// NewPatchJsonInlineRequestWithBody generates requests for PatchJsonInline with any type of body
+func NewPatchJsonInlineRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/with_json_patch_body_inline")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -523,6 +673,16 @@ type ClientWithResponsesInterface interface {
 
 	PostJsonWithResponse(ctx context.Context, body PostJsonJSONRequestBody, reqEditors ...RequestEditorFn) (*PostJsonResponse, error)
 
+	// PatchJson request with any body
+	PatchJsonWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchJsonResponse, error)
+
+	PatchJsonWithResponse(ctx context.Context, body PatchJsonJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchJsonResponse, error)
+
+	// PatchJsonInline request with any body
+	PatchJsonInlineWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchJsonInlineResponse, error)
+
+	PatchJsonInlineWithResponse(ctx context.Context, body PatchJsonInlineJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchJsonInlineResponse, error)
+
 	// GetJson request
 	GetJsonWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetJsonResponse, error)
 
@@ -593,6 +753,48 @@ func (r PostJsonResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r PostJsonResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PatchJsonResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// Status returns HTTPResponse.Status
+func (r PatchJsonResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PatchJsonResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PatchJsonInlineResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// Status returns HTTPResponse.Status
+func (r PatchJsonInlineResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PatchJsonInlineResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -726,6 +928,40 @@ func (c *ClientWithResponses) PostJsonWithResponse(ctx context.Context, body Pos
 	return ParsePostJsonResponse(rsp)
 }
 
+// PatchJsonWithBodyWithResponse request with arbitrary body returning *PatchJsonResponse
+func (c *ClientWithResponses) PatchJsonWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchJsonResponse, error) {
+	rsp, err := c.PatchJsonWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchJsonResponse(rsp)
+}
+
+func (c *ClientWithResponses) PatchJsonWithResponse(ctx context.Context, body PatchJsonJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchJsonResponse, error) {
+	rsp, err := c.PatchJson(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchJsonResponse(rsp)
+}
+
+// PatchJsonInlineWithBodyWithResponse request with arbitrary body returning *PatchJsonInlineResponse
+func (c *ClientWithResponses) PatchJsonInlineWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchJsonInlineResponse, error) {
+	rsp, err := c.PatchJsonInlineWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchJsonInlineResponse(rsp)
+}
+
+func (c *ClientWithResponses) PatchJsonInlineWithResponse(ctx context.Context, body PatchJsonInlineJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchJsonInlineResponse, error) {
+	rsp, err := c.PatchJsonInline(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchJsonInlineResponse(rsp)
+}
+
 // GetJsonWithResponse request returning *GetJsonResponse
 func (c *ClientWithResponses) GetJsonWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetJsonResponse, error) {
 	rsp, err := c.GetJson(ctx, reqEditors...)
@@ -810,6 +1046,38 @@ func ParsePostJsonResponse(rsp *http.Response) (*PostJsonResponse, error) {
 	return response, nil
 }
 
+// ParsePatchJsonResponse parses an HTTP response from a PatchJsonWithResponse call
+func ParsePatchJsonResponse(rsp *http.Response) (*PatchJsonResponse, error) {
+	bodyBytes, err := ioutil.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PatchJsonResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParsePatchJsonInlineResponse parses an HTTP response from a PatchJsonInlineWithResponse call
+func ParsePatchJsonInlineResponse(rsp *http.Response) (*PatchJsonInlineResponse, error) {
+	bodyBytes, err := ioutil.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PatchJsonInlineResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
 // ParseGetJsonResponse parses an HTTP response from a GetJsonWithResponse call
 func ParseGetJsonResponse(rsp *http.Response) (*GetJsonResponse, error) {
 	bodyBytes, err := ioutil.ReadAll(rsp.Body)
@@ -886,6 +1154,12 @@ type ServerInterface interface {
 	// (POST /with_json_body)
 	PostJson(ctx echo.Context) error
 
+	// (PATCH /with_json_patch_body)
+	PatchJson(ctx echo.Context) error
+
+	// (PATCH /with_json_patch_body_inline)
+	PatchJsonInline(ctx echo.Context) error
+
 	// (GET /with_json_response)
 	GetJson(ctx echo.Context) error
 
@@ -928,6 +1202,24 @@ func (w *ServerInterfaceWrapper) PostJson(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshalled arguments
 	err = w.Handler.PostJson(ctx)
+	return err
+}
+
+// PatchJson converts echo context to params.
+func (w *ServerInterfaceWrapper) PatchJson(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshalled arguments
+	err = w.Handler.PatchJson(ctx)
+	return err
+}
+
+// PatchJsonInline converts echo context to params.
+func (w *ServerInterfaceWrapper) PatchJsonInline(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshalled arguments
+	err = w.Handler.PatchJsonInline(ctx)
 	return err
 }
 
@@ -1002,6 +1294,8 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.POST(baseURL+"/with_both_bodies", wrapper.PostBoth)
 	router.GET(baseURL+"/with_both_responses", wrapper.GetBoth)
 	router.POST(baseURL+"/with_json_body", wrapper.PostJson)
+	router.PATCH(baseURL+"/with_json_patch_body", wrapper.PatchJson)
+	router.PATCH(baseURL+"/with_json_patch_body_inline", wrapper.PatchJsonInline)
 	router.GET(baseURL+"/with_json_response", wrapper.GetJson)
 	router.POST(baseURL+"/with_other_body", wrapper.PostOther)
 	router.GET(baseURL+"/with_other_response", wrapper.GetOther)
@@ -1012,15 +1306,16 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/8yUz24TMRDGX2U1cFyyKdz2CAdUJAgikTiEqHK8k9jVrm1mJq1W0b47GicliahCkGjV",
-	"SzTO/NE338/rLdjYpRgwCEO9BbYOO5PDaQ4ny1u0oudEMSGJx5xdeWL5YjrUg/QJoQYW8mENQwkU28cS",
-	"msGfG0/YQD3fVZVHoxaDlviwitrcIFvySXwMUMPMeS4EWbi4dygOqRCHxYfWY5DChGYffvfiviGnGBi5",
-	"MITFGgOSEWwKG4nQStv/CFBC6y0GzjpDXgQ+X89UvXhR+TBDlmKKdIcEJdwh8U7K1Wg8GmthTBhM8lDD",
-	"u9F4dAUlJCMu+1Pde3E3y5h/mr1pKXK2Uo00utd1AzV8jSzvozjYuYN6anqtszEIhtxiUmq9zU3VLauM",
-	"B1gavSZcQQ2vqgPNao+yOuGo/h6PilZQ3rAQmu505CpSZwRqWPpgqIfyD5gnNIU2mP/YOw912LSt1hw5",
-	"cZTdwhof8eIjHqw4qn07Hr9UE4bDjipJaffnWX9S5c/C+p8IZfUP2XOAfut/QkAqi9FuyEsP9XwLk4RZ",
-	"wBx07ojQNFDuYtN0PsBiWBx2ifo+XIBionUXs3i2j2Un/xIWhwXOw/hfV1zI+NaH9Q23hl31t2uij/Fs",
-	"3zLVjhd6b4bhVwAAAP//2pHiCAkHAAA=",
+	"H4sIAAAAAAAC/8yVQW/bPAyG/4rB77vNjdPt5mN3GDpga7EE2CELAkVmYhW2pFJMCyPwfx8op7OzBWkC",
+	"bEEvAS1RzMv3kektaFd7Z9FygHwLhI8bDHzjCoNx4V6xLm9c0ciDdpbRsoTK+8poxcbZ7CE4e+Ul8Z2E",
+	"ss2NR8hBEakG2rZtUwi6xFrFopMY3i0fUMdinpxH4t1frgwF/qpqHBQKTMauoU2BXHVoQ3bwcWMIC8hn",
+	"XVY6KDWPGoxdOTlcYNBkvKiHHKalCQlj4JA8l8glUsIlJh8rg5YTZYtd+N1w+Q2DdzZgSBRhskaLpBiL",
+	"RDsi1Fw1PyykUBmNNkSdNjYCX26nop4Ni3yYYuBkgvSEBCk8IYVOyvVoPBpLovNolTeQw4fReHQNKXjF",
+	"ZfQnezZcLpYu/rxw8i5EK8XISOW2gBzunbDkEtIB2ddQyloHS6L/CVeQw39Zf1GyHcpsj6P4OyzlNCNf",
+	"BSZU9X7JlaNaMeSwNFZRA+kfMPdoMm0wLuych9xuqkpyBk4MdrewxgNefMLeikHu+/H4rZrQ9j2KJKHd",
+	"HGf9WZRfhPVZhKL6OCD6HuTpQBOyfLiLQ+L2xlXWz6ozxCyMrYzFUzTddpnn+PvbWLyQ1S+7x96FXyb/",
+	"w3chjn3UGzLcQD7bwp3HKGAGUndEqApIu1gVtbEwb+d9L05G8Qm3/k7yTsZysbnUyT+FRd/AcRh/a5ow",
+	"KVMZu16ESoUye+2ayHdvujsykRNv9N607c8AAAD//2V9gZXPCAAA",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

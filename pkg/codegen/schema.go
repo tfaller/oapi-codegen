@@ -673,6 +673,9 @@ func paramToGoType(param *openapi3.Parameter, path []string) (Schema, error) {
 	// Otherwise, look for application/json in there
 	mt, found := param.Content["application/json"]
 	if !found {
+		mt, found = param.Content["application/json-patch+json"]
+	}
+	if !found {
 		// If we don't have json, it's a string
 		return Schema{
 			GoType:      "string",

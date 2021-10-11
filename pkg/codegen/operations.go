@@ -515,7 +515,7 @@ func GenerateBodyDefinitions(operationID string, bodyOrRef *openapi3.RequestBody
 		var defaultBody bool
 
 		switch contentType {
-		case "application/json":
+		case "application/json", "application/json-patch+json":
 			tag = "JSON"
 			defaultBody = true
 		default:

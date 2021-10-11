@@ -57,6 +57,20 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SchemaObject'
+  /with_json_patch_body:
+    patch:
+      operationId: PatchJson
+      requestBody:
+        $ref: '#/components/requestBodies/PatchBody'
+  /with_json_patch_body_inline:
+    patch:
+      operationId: PatchJsonInline
+      requestBody:
+        required: true
+        content:
+          application/json-patch+json:
+              schema:
+                $ref: '#/components/schemas/SchemaObject'
   /with_other_body:
     post:
       operationId: PostOther
@@ -91,3 +105,8 @@ components:
       required:
         - role
         - firstName
+  requestBodies:
+    PatchBody:
+      content:
+        application/json-patch+json:
+          type: array
